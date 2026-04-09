@@ -4,3 +4,4 @@ __pycache__/*
 subset*
 .ipynb_checkpoints/*
 *.html
+*.tif

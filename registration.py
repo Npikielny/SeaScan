@@ -3,27 +3,47 @@ from tqdm import tqdm
 from loguru import logger
 log = logger.debug
 
-def create_descriptors(image, centers, descriptor_radius):
-    img = image.astype(np.float32)
-    
-    starts = centers - descriptor_radius
-    ends = centers + descriptor_radius
+def translate_to(t):
+    return np.array([
+        [1, 0, -t[0]],
+        [0, 1, -t[1]],
+        [0, 0, 1]
+    ]).astype(float)
 
-    mask = np.mean(np.bitwise_and(starts >= 0, ends < img.shape[:2][::-1]), axis=-1) >= 1
-    log(f"Keeping {np.mean(mask) * 100:.2f}% of descriptors ({np.sum(mask)})")
-        
-    descriptors = np.array([
-        img[
-            s[1]:e[1],
-            s[0]:e[0]
-        ] for s, e in zip(starts[mask], ends[mask])
-    ])
+def get_warp(ctr, rot, offset):
+    # Move to center
+    # Rotate
+    # Move back
+    T = translate_to(ctr)
+    return translate_to(offset) @ np.vstack([
+    np.hstack([rot, [[0], [0]]]),
+        [0, 0, 1]
+    ]) @ T
+
+def create_descriptors(image, centers, descriptor_radius, coordinate_frame=None):
+    img = image.astype(np.float32)
+    if coordinate_frame is None:
+        rot = np.identity(2)
+    else:
+        rot = coordinate_frame[1]
+
+    descriptors = []
+    for c in tqdm(centers, "Creating Descriptors"):
+        warp = get_warp(c, rot, [-descriptor_radius, -descriptor_radius])
+        descriptors.append(
+            cv2.warpAffine(
+                image, 
+                warp[:-1],
+                [descriptor_radius * 2 + 1, descriptor_radius * 2 + 1],
+                borderMode=cv2.BORDER_REPLICATE
+            )
+        )
     means = np.mean(descriptors, axis=(1, 2))
     std = np.std(descriptors, axis=(1,2))
     descriptors -= means[:, np.newaxis, np.newaxis, :]
     descriptors /= std[:, np.newaxis, np.newaxis, :]
-    return np.linalg.norm(descriptors, axis=-1), mask
-
+    return np.linalg.norm(descriptors, axis=-1)
+    
 def find_best_score(desc, options):
     best = 0
     best_score = -np.inf
@@ -74,17 +94,25 @@ def match_descriptors(desc1s, desc2s):
         return scores, np.ones(len(desc1s))
 
 from PIL import Image
-def match_images(paths, circlesclea, matching_query=None, DESC_SIZE=60):
+import gps
+def match_images(paths, circles, matching_query=None, DESC_SIZE=60):
     descriptors = []
-
-    for path, res in tqdm(zip(paths, circles), "Creating descriptors"):
+    frames = []
+    for path, res in zip(paths, tqdm(circles, "Creating descriptors")):
         image = np.asarray(Image.open(path))
-        centers = (np.round(res[:, :2])).astype(int)
-        desc, mask = create_descriptors(image, centers, DESC_SIZE)
+        yaw = gps.get_gimbal_yaw(path)
+        frame = get_image_transform(yaw, image.shape)
+        frames.append(frame)
+        centers = (np.round(res[:, :2]))#.astype(int)
+        desc = create_descriptors(image, centers.astype(int), DESC_SIZE, frame)
+
+        c0 = centers
+        centers = (centers - frame[0]) @ frame[1].T + frame[0]
         descriptors.append(
             (
-                centers[mask],
+                centers,
                 desc, 
+                c0
             )
         )
 
@@ -97,7 +125,8 @@ def match_images(paths, circlesclea, matching_query=None, DESC_SIZE=60):
                 matching_query.append((i, j))
 
     results = [match_descriptors(descriptors[a][1], descriptors[b][1]) for (a, b) in tqdm(matching_query, "Matching Queries")]
-    return descriptors, results
+    return descriptors, results, frames
+
         
 def draw_matches(path1, path2, matches, centers1, centers2):
     im1 = np.asarray(Image.open(path1))
@@ -169,11 +198,11 @@ def ransac_d(c1, c2, error=30):
     mask = score < error
     return t[best], best, best_score, best_count, mask
 
-def get_image_transform(gimball_pitch, image_shape):
+def get_image_transform(gimball_yaw, image_shape):
     ctr = np.array(image_shape[:2][::-1]) / 2
-    gimball_pitch = gimball_pitch / 180 * np.pi 
-    c = np.cos(gimball_pitch)
-    s = np.sin(gimball_pitch)
+    gimball_yaw = gimball_yaw / 180 * np.pi 
+    c = np.cos(gimball_yaw)
+    s = np.sin(gimball_yaw)
     rot = np.array([
         [c, -s],
         [s, c]
@@ -186,12 +215,21 @@ def image_to_world(coord, ctr, rot):
 def world_to_image(coord, ctr, rot):
     return coord @ rot.T + ctr
 
-def get_good_transforms(targets, circles, ransac_fn=ransac_d, min_correspondances=3, desc_size=100):
+def get_good_transforms(targets, circles, query_type='exhaustive', ransac_fn=ransac_d, min_correspondances=3, desc_size=100):
     queries = []
-    for i in range(len(targets) - 1):
-        queries.append((i, i + 1))
-    descriptors, matches = match_images(targets, circles, matching_query=queries, DESC_SIZE=desc_size)
-    # t, b, s, count, mask = ransac_d(C1, C2[M[:, 0].astype(int)], error=30)
+    if query_type == 'exhaustive':
+        for i in range(len(targets)):
+            for j in range(len(targets)):
+                if i == j: 
+                    continue
+                queries.append((i, j))
+    else:
+        query_type = f"Originally {query_type}–switched to sequential"
+        for i in range(len(targets) - 1):
+            queries.append((i, i + 1))
+    log(f"Query mode: {query_type}, yielded: {len(queries)} queries")
+    descriptors, matches, frames = match_images(targets, circles, matching_query=queries, DESC_SIZE=desc_size)
+    
     safe_queries = []
 
     for Q in tqdm(range(len(queries))):
@@ -200,25 +238,27 @@ def get_good_transforms(targets, circles, ransac_fn=ransac_d, min_correspondance
         P2 = targets[q[1]]
         M = matches[Q][0]
         mask = matches[Q][1]
+
+        DRAWING_C1 = descriptors[q[0]][-1][mask.astype(bool)]
+        DRAWING_C2 = descriptors[q[1]][-1]
         
         C1 = descriptors[q[0]][0][mask.astype(bool)]
         C2 = descriptors[q[1]][0]
         
-        c = draw_matches(P1, P2, M, C1, C2)
-        cv2.imwrite(f"match_{Q}.jpg", c[..., ::-1])
-        t, b, s, count, mask = ransac_d(C1, C2[M[:, 0].astype(int)], error=30)
-        # t, b, s, count, mask = ransac_e(C1, C2[M[:, 0].astype(int)])
+        c1 = draw_matches(P1, P2, M, DRAWING_C1.astype(int), DRAWING_C2.astype(int))
+        t, b, s, count, mask = ransac_fn(C1, C2[M[:, 0].astype(int)], error=30)
     
-        c = draw_matches(P1, P2, M[mask], C1[mask], C2)
-        cv2.imwrite(f"ransac_match_{Q}.jpg", c[..., ::-1])
+        c2 = draw_matches(P1, P2, M[mask], DRAWING_C1[mask].astype(int), DRAWING_C2.astype(int))
 
         if np.sum(mask) >= min_correspondances:
             safe_queries.append((
                 q,
                 t
             ))
+            cv2.imwrite(f"match_{Q}.jpg", c1[..., ::-1])
+            cv2.imwrite(f"ransac_match_{Q}.jpg", c2[..., ::-1])
     log("Saved all matching and RANSAC results.")
-    return safe_queries
+    return safe_queries, frames
             
 def ransac_transform(A, B):
     assert(A.shape[0] >= 2)
@@ -249,6 +289,7 @@ def ransac_transform(A, B):
                 B[i],
                 B[j]
             )
+            print(M)
             score = np.linalg.norm(A @ M - B, axis=-1)
             score = np.median(score)
             if score < best_score:
@@ -277,4 +318,4 @@ def map_coords_to_image(targets, safe_transforms, arc_target_coords):
         ]).astype(np.uint8)
         cv2.imwrite(f"rewarping_{idx}.jpg", result.astype(np.uint8))
     log(f"Saved target transforms")
-    return M
+    return M, offsets, translations
