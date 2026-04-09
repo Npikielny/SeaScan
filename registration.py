@@ -2,6 +2,7 @@ import cv2, numpy as np, matplotlib.pyplot as plt, glob
 from tqdm import tqdm
 from loguru import logger
 log = logger.debug
+from pathlib import Path
 
 def translate_to(t):
     return np.array([
@@ -215,7 +216,7 @@ def image_to_world(coord, ctr, rot):
 def world_to_image(coord, ctr, rot):
     return coord @ rot.T + ctr
 
-def get_good_transforms(targets, circles, query_type='exhaustive', ransac_fn=ransac_d, min_correspondances=3, desc_size=100):
+def get_good_transforms(targets, circles, query_type='exhaustive', ransac_fn=ransac_d, min_correspondances=3, desc_size=100, match_dir=None):
     queries = []
     if query_type == 'exhaustive':
         for i in range(len(targets)):
@@ -255,8 +256,11 @@ def get_good_transforms(targets, circles, query_type='exhaustive', ransac_fn=ran
                 q,
                 t
             ))
-            cv2.imwrite(f"match_{Q}.jpg", c1[..., ::-1])
-            cv2.imwrite(f"ransac_match_{Q}.jpg", c2[..., ::-1])
+            if not match_dir is None:
+                if type(match_dir) == str:
+                    match_dir = Path(match_dir)
+                cv2.imwrite(str(match_dir / f"match_{Q}.jpg"), c1[..., ::-1])
+                cv2.imwrite(str(match_dir / f"ransac_match_{Q}.jpg"), c2[..., ::-1])
     log("Saved all matching and RANSAC results.")
     return safe_queries, frames
             
@@ -282,21 +286,21 @@ def ransac_transform(A, B):
         for j in range(A.shape[0]):
             if i == j:
                 continue
-        try:
-            M = solve(
-                A[i],
-                A[j],
-                B[i],
-                B[j]
-            )
-            print(M)
-            score = np.linalg.norm(A @ M - B, axis=-1)
-            score = np.median(score)
-            if score < best_score:
-                best_M = M
-                best_score = score
-        except:
-            print(f"Failed to find M for {i}, {j}")
+            try:
+                M = solve(
+                    A[i],
+                    A[j],
+                    B[i],
+                    B[j]
+                )
+                print(M)
+                score = np.linalg.norm(A @ M - B, axis=-1)
+                score = np.median(score)
+                if score < best_score:
+                    best_M = M
+                    best_score = score
+            except:
+                print(f"Failed to find M for {i}, {j}")
     return best_M,  best_score
 
 def map_coords_to_image(targets, safe_transforms, arc_target_coords):

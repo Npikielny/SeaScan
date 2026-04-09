@@ -98,12 +98,12 @@ for r in results:
                     src_crs=src.crs,
                     dst_transform=transform,
                     dst_crs=src.crs,
-                    resampling=Resampling.nearest,
+                    resampling=Resampling.bilinear,
                     src_nodata=src.nodata,
                     dst_nodata=src.nodata
                 )
             img = reshape_as_image(reprojected_raster)
-            alpha = np.where(np.all(reprojected_raster == 0, axis=0), 0, 255).astype(np.uint8)
+            alpha = np.where(np.all(reprojected_raster == 0, axis=0), 0, 127).astype(np.uint8)
             if img.shape[2] == 3:
                 img = np.dstack([img, alpha])
 
