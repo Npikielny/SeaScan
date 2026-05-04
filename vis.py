@@ -9,17 +9,6 @@ results = glob.glob("./*.tif")
 import numpy as np
 from rasterio.transform import xy
 
-# def get_corners(src):
-#     """Return the geographic coordinates of the four corners of a raster"""
-#     h, w = src.height, src.width
-#     corners = [
-#         xy(src.transform, 0, 0),      # top-left
-#         xy(src.transform, 0, w),      # top-right
-#         xy(src.transform, h, w),      # bottom-right
-#         xy(src.transform, h, 0),      # bottom-left
-#     ]
-#     return corners
-
 images = []
 bounds = []
 for r in results:
@@ -30,32 +19,6 @@ for r in results:
         bounds.append(src.bounds)
         print(src.bounds)
 
-# print("Creating map")
-# # Create map centered on raster
-# m = folium.Map(location=[(bounds[0].top+bounds[0].bottom)/2,
-#                          (bounds[0].left+bounds[0].right)/2], zoom_start=22)
-
-# # folium.TileLayer('Stamen Terrain').add_to(m)
-# # folium.TileLayer('Stamen Toner').add_to(m)
-# # folium.TileLayer('Stamen Watercolor').add_to(m)
-
-# # folium.LayerControl().add_to(m)
-# folium.TileLayer(
-#     tiles='https://stamen-tiles.a.ssl.fastly.net/terrain/{z}/{x}/{y}.jpg',
-#     attr='Map tiles by Stamen Design, CC BY 3.0 — Map data © OpenStreetMap contributors',
-#     name='Stamen Terrain'
-# ).add_to(m)
-
-# for (im, b) in tqdm(zip(images, bounds), "Adding Tiles"):
-#     # Add GeoTIFF as image overlay
-#     ImageOverlay(
-#         image=im,
-#         bounds=[[b.bottom, b.left], [b.top, b.right]],
-#         opacity=0.7,
-#     ).add_to(m)
-
-# print("Saving Map")
-# m.save("map.html")
 import rasterio
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 from rasterio.plot import reshape_as_image
@@ -103,7 +66,25 @@ for r in results:
                     dst_nodata=src.nodata
                 )
             img = reshape_as_image(reprojected_raster)
-            alpha = np.where(np.all(reprojected_raster == 0, axis=0), 0, 127).astype(np.uint8)
+            Y, X = np.meshgrid(np.arange(img.shape[1]), np.arange(img.shape[0]))
+            ctr = np.array(img.shape[:2])[::-1] / 2
+            UV = (np.dstack([Y, X]) - ctr) / ctr
+            D = np.sqrt(np.vecdot(UV, UV))
+            
+            alpha = np.where(np.all(reprojected_raster == 0, axis=0), 0, 1)
+            alpha2 = D / D.max()# < 0.33
+            alpha2 = 1 - alpha2
+            alpha2 *= alpha2
+            alpha2 *= alpha2
+
+            # import matplotlib.pyplot as plt
+            # plt.imshow(alpha2); plt.colorbar(); plt.show(); 
+            
+            MAX_ALPHA = 255
+            # alpha = np.clip((alpha * alpha2 * MAX_ALPHA), 0, 255).astype(np.uint8)
+            alpha = np.clip(alpha * alpha2 * MAX_ALPHA, 0, 255).astype(np.uint8)
+            # plt.imshow(alpha); plt.colorbar(); plt.show()
+                #.astype(np.uint8)
             if img.shape[2] == 3:
                 img = np.dstack([img, alpha])
 

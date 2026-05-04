@@ -18,17 +18,15 @@ def gray_mask(img, threshold=0.5):
 """
 Creates a mask of mostly solid objects
 """
-def gradient_mask(img, kernel_size=3, threshold=50):
-    dx = cv2.Sobel(img, cv2.CV_32F, 1, 0)
-    dy = cv2.Sobel(img, cv2.CV_32F, 0, 1)
+def gradient_mask(img, kernel_size=3, threshold=0.05):
+    dx = cv2.Sobel(img, cv2.CV_32F, 1, 0) / 255
+    dy = cv2.Sobel(img, cv2.CV_32F, 0, 1) / 255
     dsq = dx * dx + dy * dy
-    mask = cv2.medianBlur(np.mean(dsq, axis=-1), kernel_size) < threshold
-    return cv2.dilate(
-        mask.astype(np.uint8),
-        np.ones([kernel_size * 2, 2 * kernel_size])
-    )
-
-    # return (cv2.medianBlur(np.mean(dsq / dsq.max(), axis=-1), kernel_size) < threshold)
+    d = np.mean(dsq, axis=-1)
+    d = cv2.medianBlur(d, kernel_size) < threshold
+    d = cv2.erode(d.astype(np.uint8), np.ones((kernel_size, kernel_size)))
+    d = cv2.dilate(d, np.ones((kernel_size + 2, kernel_size + 2)))
+    return d
 
 """
 Removes large areas in a mask
@@ -84,7 +82,7 @@ def line_mask(mask, dist_thresh=10, rho=1, theta=np.pi / 180, threshold=10, minL
     
     coords = np.dstack([Y, X])
     if lines is not None:
-        for line in tqdm(lines, "Removing Lines"):
+        for line in tqdm(lines, "Removing Lines", leave=False):
             x1, y1, x2, y2 = line[0]
             p1 = np.array([y1, x1]).astype(np.float32)
             p2 = np.array([y2, x2]).astype(np.float32)
@@ -125,28 +123,37 @@ def draw_circles(img, mask, circles):
     return img
 
         
-def find_floats(img, draw_results=True, logs=True):
+def find_floats(img, gray=0.15, erosion=3, dilation=5, g_mask=0.05, draw_results=True, logs=True):
     if logs:
         log("Finding Gray Mask")
-    mask, gray = gray_mask(img)
+    mask, gray = gray_mask(img, threshold=gray)
     if logs:
         log("Finding Boat Mask")
     b_mask = area_mask(mask)
+    acc_mask = np.bitwise_and(mask, b_mask)
     if logs:
         log("Finding Edge Mask")
-    e_mask = edge_mask(img)
+    e_mask = edge_mask(img, canny1=500, cann2=0)
+    acc_mask = np.bitwise_and(acc_mask, e_mask)
 
-    if logs:
-        log("Taking Gradient Mask")
-        g_mask = gradient_mask(img)
-
-
-    acc_mask = np.bitwise_and(np.bitwise_and(mask, g_mask), np.bitwise_and(b_mask, e_mask))
+    if g_mask:
+        if logs:
+            log("Taking Gradient Mask")
+        g_mask = gradient_mask(img, threshold=g_mask)
+        acc_mask = np.bitwise_and(acc_mask, g_mask)
 
     if logs:
         log("Finding Line Mask")
     l_mask = line_mask(acc_mask, logs=logs)
     acc_mask = np.bitwise_and(acc_mask, l_mask)
+    acc_mask = cv2.erode(
+        acc_mask,
+        np.ones((erosion, erosion))
+    )
+    acc_mask = cv2.dilate(
+        acc_mask,
+        np.ones((dilation, dilation))
+    )
 
     # acc_mask = np.bitwise_and(acc_mask, g_mask)
     if logs:
@@ -154,13 +161,18 @@ def find_floats(img, draw_results=True, logs=True):
     circles = find_circles(acc_mask)
     res = {
         'circles': circles,
-        'mask': mask,
-        'g_mask': g_mask,
-        'b_mask': b_mask,
-        'e_mask': e_mask,
-        'l_mask': l_mask,
         'acc_mask': acc_mask,
     }
+    if logs:
+        res.update(
+            {
+                'mask': mask,
+                'g_mask': g_mask,
+                'b_mask': b_mask,
+                'e_mask': e_mask,
+                'l_mask': l_mask,
+            }
+        )
     if draw_results:
         res.update({'result': draw_circles(img, acc_mask, circles)})
     return res

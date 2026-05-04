@@ -4,6 +4,15 @@ import numpy as np
 import cv2
 from PIL import Image
 
+def get_rot_mat(angle):
+    c = np.cos(angle)
+    s = np.sin(angle)
+    rot = np.array([
+        [c, -s],
+        [s, c]
+    ])
+    return rot
+
 def rewarp_image(from_path, to_path, img_shape, v_mask, M):
     c1 = registration.get_image_transform(gps.get_gimbal_yaw(from_path), img_shape)
     c2 = registration.get_image_transform(gps.get_gimbal_yaw(to_path), img_shape)
