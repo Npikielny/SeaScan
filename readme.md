@@ -1,4 +1,4 @@
-# Plain Map
+# SeaScan
 
 Constructing maps of flat regions should be a relatively simple task, but conventional approaches require complicated structure-from-motion pipelines intended for full 3D reconstruction.
 These methods often fail on scenes without dinstiguishable details, such as the ocean. We overcome this limitation through the use of target(s) and GPS data to stitch maps that are focused at a singular depth.
