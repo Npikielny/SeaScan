@@ -168,13 +168,13 @@ class GUI(object):
                 # the_interface = gr.Interface(
                 #     fn=self.update_plot,
                 #     inputs=[
-                latbox = gr.Textbox(
-                    label="Lat",
+                latbox = gr.Textbox( # Oopsies I flipped lat and lon in my variable names... who will know though? 😉
+                    label="Lon",
                     value=str(self.target[0]),
                     interactive=True
                 )
                 lonbox = gr.Textbox(
-                    label="Lon",
+                    label="Lat",
                     value=str(self.target[1]),
                     interactive=True
                 )

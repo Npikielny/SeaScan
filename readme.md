@@ -21,7 +21,7 @@ As you use our software, it will ask to specify a working directory (it will cre
 
 ## Automatic Target Detection
 To run the automatic detection script, run the following:
-python preproc.py --target {INSERT PATH TO TARGET IMAGE} --target_area {INSERT AREA SIZE} --working_directory {INSERT WORKING DIRECTORY}  --data {INSERT DATA ROOT} --calibration {INSERT CALIBRTION PATH}
+`python preproc.py --target {INSERT PATH TO TARGET IMAGE} --target_area {INSERT AREA SIZE} --working_directory {INSERT WORKING DIRECTORY}  --data {INSERT DATA ROOT} --calibration {INSERT CALIBRTION PATH}`
 
 Parameters:
 target: an image that has a target (ideally this is in the center of an area with **many** targets–at least 3)
@@ -30,11 +30,27 @@ working_directory: the working directory path
 data: the root directory of your data
 calibration (optional): path to the calibration.npy file for the data
 
+You will find summaries of the results in the working folder. In the `features` directory, you will find all the areas the algorithm considered as a feature. In the `matches` folder you will find the final matchings between images that were used to estimate the transformation. 
+
 ## Manual Target Detection
 To run the manual detection server, run the following:
-python manual_triangulation.py --working {WORKING DIRECTORY} --root /Volumes/BroadKey0313/DCIM/26_04_01 --calibration ./calibration.npy
+`python manual_triangulation.py --working {WORKING DIRECTORY} --root {INSERT DATA ROOT} --calibration ./calibration.npy`
 
-In the terminal window, after some processing, there will be a local link. Paste this into your browser.
+In the terminal window, after some processing, there will be a local link. Paste this into your browser. It will usually be: [http://127.0.0.1:7860](http://127.0.0.1:7860), but it may change if you have multiple instances running or if this port is already being used.
+
+At this point, you will see the following:
+
+On the left is a plot of the coordinates of your data. The green point is the designated target image. The surrounding red images are the other images that will be used to estimate the transform. After pressing the "Update" button, you can view these images in the panel on the right.
+Please set the latitude, longitude, and target area size (Dist) to encompass the images with one target shared among them. **You must use the same target every time**. Press finish when you're happy with your selection.
+
+Then you will be prompted to find the target within each image. On the left you will see a reference image. 
+Each image will be presented twice. The top image allows you to zoom in. Click twice on opposite corners of your target to make a box–the software will remember only your last two clicks. Then, in the bottom pane, there will be a zoomed in portion of the image from the box you made. In this section, click on the center of your target. If you're happy with your selection, press save. If you cannot find the target, press skip.
+
+On the left side, a reference will be shown. Please find the target in this pane as well and save it.
+
+If the images fail to load, you may havee to press the `skip` button and then the `back` button, to refresh.
+
+When you are done with all of the images (skipped or saved), press the finish button.
 
 ## Folium Map Generation
 
