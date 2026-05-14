@@ -209,7 +209,7 @@ def create_map(geotiffs, destination, skip):
 
     # Create Folium map centered on first raster
     m = folium.Map(location=[(bounds[0][2] + bounds[0][0]) / 2,
-                            (bounds[0][3] + bounds[0][1]) / 2], zoom_start=24, max_zoom=30)
+                            (bounds[0][3] + bounds[0][1]) / 2], zoom_start=17, max_zoom=30)
 
     # Add basemap
     folium.TileLayer(

@@ -1,0 +1,27 @@
+{
+  "name": "registration",
+  "version": "1.0.0",
+  "description": "Constructing maps of flat regions should be a relatively simple task, but conventional approaches require complicated structure-from-motion pipelines intended for full 3D reconstruction. These methods often fail on scenes without dinstiguishable details, such as the ocean. We overcome this limitation through the use of target(s) and GPS data to stitch maps that are focused at a singular depth.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Npikielny/SeaScan.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Npikielny/SeaScan/issues"
+  },
+  "homepage": "https://github.com/Npikielny/SeaScan#readme",
+  "devDependencies": {
+    "vitepress": "^1.6.4"
+  }
+}

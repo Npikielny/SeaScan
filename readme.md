@@ -3,19 +3,18 @@
 Constructing maps of flat regions should be a relatively simple task, but conventional approaches require complicated structure-from-motion pipelines intended for full 3D reconstruction.
 These methods often fail on scenes without dinstiguishable details, such as the ocean. We overcome this limitation through the use of target(s) and GPS data to stitch maps that are focused at a singular depth.
 
-> [!Abstract] Map of Waters Near the Rosenstiel School using the MAVIC 3E
-> <div style="display: flex; justify-content: space-around">
->  <img 
->    src="./figures/Rosenstiel HTML Map May 6.png"
->    alt="drawing"
->    width="300"
->  />
-> <video controls src="./figures/rectified_timelapse_small.mp4" width="600"></video>
-> </div>
+### Map of Waters Near the Rosenstiel School using the MAVIC 3E
+<div style="display: flex; justify-content: space-around">
+ <img 
+   src="./figures/Rosenstiel HTML Map May 6.png"
+   alt="drawing"
+   width="300"
+ />
+<video controls src="https://youtu.be/PaGTsykrcSk?si=BLMZKQDm9MmGTOLj" width="600"></video>
+</div>
 
-> [!FAILURE] MAYBE MAKE THE ABOVE CALLOUT A TLAPSE?
-
-> [!Note] Accessibility
+> [!Important] 
+> ### Accessibility
 > Our method was designed to automatically detect mooring buoys for boats; however, manually isolating a target in just a few images yields similar results. Thus, our method can be used on any type of target with minimal effort. 
 > <div style="display: flex; justify-content: space-around">
 >  <img 
@@ -33,13 +32,22 @@ These methods often fail on scenes without dinstiguishable details, such as the 
 ## Products
 
 ### Folium Map
-The simplest result is a map made by folium
-<iframe src="./figures/march_20_folium.html" width="100%" height="500px"></iframe>
+The simplest result is a map made by folium. It populates a map with a subset of downsampled images stacked on top of each other. 
+<div style="display: grid; place-items: center;">
+    <img 
+        src="./figures/Rosenstiel HTML Map May 6.png"
+        alt="drawing"
+        width="500"
+    />
+</div>
+
+[*Open Interactive Folium Map*](https://npikielny.github.io/SeaScan/figures/march_20_folium.html)
 
 ### Stitched Image
 
 
 ### Timelapse Videos
+
 
 
 
