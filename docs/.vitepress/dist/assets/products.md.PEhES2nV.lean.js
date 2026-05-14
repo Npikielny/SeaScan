@@ -1,0 +1,1 @@
+import{_ as t,H as e,f as r}from"./chunks/framework.D4aZISZY.js";const f=JSON.parse('{"title":"","description":"","frontmatter":{},"headers":[],"relativePath":"products.md","filePath":"products.md"}'),a={name:"products.md"};function o(s,c,n,p,d,_){return e(),r("div")}const m=t(a,[["render",o]]);export{f as __pageData,m as default};
