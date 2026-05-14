@@ -102,11 +102,11 @@ def match_descriptors(desc1s, desc2s):
 
 from PIL import Image
 import gps
-def match_images(paths, circles, matching_query=None, DESC_SIZE=60):
+def match_images(paths, circles, calibration, matching_query=None, DESC_SIZE=60):
     descriptors = []
     frames = []
     for path, res in zip(paths, tqdm(circles, "Creating Descriptors")):
-        image = np.asarray(Image.open(path))
+        image = calibration.open(path)
         yaw = gps.get_gimbal_yaw(path)
         frame = get_image_transform(yaw, image.shape)
         frames.append(frame)
@@ -296,7 +296,7 @@ def image_to_world(coord, ctr, rot):
 def world_to_image(coord, ctr, rot):
     return coord @ rot.T + ctr
 
-def get_good_transforms(targets, circles, query_type='exhaustive', ransac_fn=ransac_d, min_correspondances=2, desc_size=100, match_dir=None):
+def get_good_transforms(targets, circles, calibration, query_type='exhaustive', ransac_fn=ransac_d, min_correspondances=2, desc_size=100, match_dir=None):
     queries = []
     if query_type == 'exhaustive':
         for i in range(len(targets)):
@@ -309,11 +309,11 @@ def get_good_transforms(targets, circles, query_type='exhaustive', ransac_fn=ran
         for i in range(len(targets) - 1):
             queries.append((i, i + 1))
     log(f"Query mode: {query_type}, yielded: {len(queries)} queries")
-    descriptors, matches, frames = match_images(targets, circles, matching_query=queries, DESC_SIZE=desc_size)
+    descriptors, matches, frames = match_images(targets, circles, calibration, matching_query=queries, DESC_SIZE=desc_size)
     
     safe_queries = []
 
-    for Q in tqdm(range(len(queries))):
+    for Q in tqdm(range(len(queries)), "Finding Robust Queries"):
         q = queries[Q]
         P1 = targets[q[0]]
         P2 = targets[q[1]]
@@ -344,10 +344,11 @@ def get_good_transforms(targets, circles, query_type='exhaustive', ransac_fn=ran
                 c1 = draw_matches(P1, P2, M, DRAWING_C1.astype(int), DRAWING_C2.astype(int))
                 c2 = draw_matches(P1, P2, M[mask], DRAWING_C1[mask].astype(int), DRAWING_C2.astype(int))
 
-                cv2.imwrite(str(match_dir / f"match_{Q}.jpg"), c1[..., ::-1])
-                cv2.imwrite(str(match_dir / f"ransac_match_{Q}.jpg"), c2[..., ::-1])
+                cv2.imwrite(str(match_dir / f"match_{Q}.jpg"), cv2.pyrDown(cv2.pyrDown(cv2.pyrDown(c1)))[..., ::-1])
+                cv2.imwrite(str(match_dir / f"ransac_match_{Q}.jpg"), cv2.pyrDown(cv2.pyrDown(cv2.pyrDown(c2)))[..., ::-1])
         else:
-            log(f"Match ({q[0]}, {q[1]}) had insufficient matches after ransac. Before: {len(matches)}, After: {np.sum(mask)}")
+            pass
+            # log(f"Match ({q[0]}, {q[1]}) had insufficient matches after ransac. Before: {len(M)}, After: {np.sum(mask)}")
     log(f"Saved all matching and RANSAC results. Found {len(safe_queries)} good matches.")
     return safe_queries, frames
             
@@ -439,13 +440,13 @@ def lstsq_ransac_transform(offsets, translations, samples_per_test, tests, thres
     return best, best_count, best_score
 
 
-def map_coords_to_image(targets, safe_transforms, arc_target_coords, mode: TransformMode = TransformMode.Rectified):
+def map_coords_to_image(targets, safe_transforms, arc_target_coords, mode: TransformMode = TransformMode.Rectified, n=10_000):
     offsets = np.array([arc_target_coords[q[1]] - arc_target_coords[q[0]] for q, _ in safe_transforms])
     translations = np.array([t for _, t in safe_transforms])
     if mode == TransformMode.Linear:
-        M, c, s = lstsq_ransac_transform(offsets, translations, 6, 10_000)
+        M, c, s = lstsq_ransac_transform(offsets, translations, 6, n)
     elif mode == TransformMode.Rectified:
-        M, c, s = lstsq_ransac_2d_transform(offsets, translations, 6, 10_000)
+        M, c, s = lstsq_ransac_2d_transform(offsets, translations, 6, n)
     else:
         raise "Transform mode not configured"
     # M, s = ransac_transform(offsets, translations)

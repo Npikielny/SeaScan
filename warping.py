@@ -3,6 +3,7 @@ import gps
 import numpy as np
 import cv2
 from PIL import Image
+import calib
 
 def get_rot_mat(angle):
     c = np.cos(angle)
@@ -13,7 +14,7 @@ def get_rot_mat(angle):
     ])
     return rot
 
-def rewarp_image(from_path, to_path, img_shape, v_mask, M):
+def rewarp_image(from_path, to_path, img_shape, v_mask, M, calibration):
     c1 = registration.get_image_transform(gps.get_gimbal_yaw(from_path), img_shape)
     c2 = registration.get_image_transform(gps.get_gimbal_yaw(to_path), img_shape)
     T = gps.to_arc_seconds(gps.get_coords(to_path) - gps.get_coords(from_path))
@@ -28,8 +29,10 @@ def rewarp_image(from_path, to_path, img_shape, v_mask, M):
     
     mat = mat4 @ mat3 @ mat2 @ mat1
     
+    img = calibration.open(from_path)
+        
     warped = cv2.warpAffine(
-        np.asarray(Image.open(from_path)) * v_mask[..., np.newaxis],
+        img * v_mask[..., np.newaxis],
         mat[:-1],
         img_shape[:2][::-1]
     )

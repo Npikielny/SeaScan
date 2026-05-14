@@ -6,3 +6,6 @@ subset*
 *.html
 *.tif
 working*
+*.mov
+*.mp4
+*.gradio

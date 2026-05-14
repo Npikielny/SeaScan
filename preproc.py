@@ -3,6 +3,7 @@ from tqdm import tqdm
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
 import warping
+from calib import Calibration
 
 import gps, features, registration
 
@@ -32,17 +33,14 @@ def get_target_area(images, target, target_area):
     # targets = targets[mask2]
     log(f"{len(targets)} target images")
     return targets, mask, coords
-    
 
-def summarize_data(coords, working, targets, mask):
+
+def summarize_data(coords, working, targets, mask, calibration):
     LATLON = gps.to_arc_seconds(coords)
-    imgs = [
-        np.asarray(Image.open(im)) for im in tqdm(targets, "Loading Targets for Visualization")
-    ]
     
-    fig, axs = plt.subplots(2, figsize=(np.array([len(imgs), len(imgs)]) * np.array([imgs[0].shape[:2][::-1]]) / np.max(imgs[0].shape) * 2)[0])
+    fig, axs = plt.subplots(1, figsize=[10, 10])
     
-    c = axs[0].scatter(
+    c = axs.scatter(
         LATLON[:, 0],
         LATLON[:, 1],
         c=np.arange(LATLON.shape[0]) / LATLON.shape[0],
@@ -51,35 +49,31 @@ def summarize_data(coords, working, targets, mask):
     )
     fig.colorbar(c)
     
-    axs[0].scatter(
+    axs.scatter(
         LATLON[mask][:, 0],
         LATLON[mask][:, 1],
         s=1,
         c='white'
     )
-    axs[0].set_aspect('equal')
+    axs.set_aspect('equal')
     
-    axs[0].axis('off') # The axis is sometimes anisotropically scaled, which is confusing, so I turned off labels
-    
-    axs[1].imshow(np.hstack(imgs))
-    _ = axs[1].axis('off')
+    axs.axis('off') # The axis is sometimes anisotropically scaled, which is confusing, so I turned off labels
     fig.savefig(Path(working / "data_summary.jpg"), dpi=300)
     plt.close()
-    return imgs
 
-def variance(images, n):
+def variance(images, n, calibration=None):
     e = 0
     esq = 0
     for i in tqdm(np.random.randint(0, len(images), n), "Estimating Variance for Vignette Mask"):
-        im = np.asarray(Image.open(images[i])).astype(np.float32)
+        im = calibration.open(images[i]).astype(np.float32)
         e += im
         esq += im * im
         
     variance = np.linalg.norm(e * e - esq, axis=-1)
     return variance
 
-def get_v_mask(images, n, edge_erosion, threshold=1/4, kernel_size=105):
-    v = variance(images, n)
+def get_v_mask(images, n, edge_erosion, threshold=1/4, kernel_size=105, calibration=None):
+    v = variance(images, n, calibration=calibration)
     v_mask = cv2.erode((v > v.mean() * threshold).astype(np.uint8), np.ones((kernel_size, kernel_size)))
     v_mask[:edge_erosion] = 0
     v_mask[-edge_erosion:] = 0
@@ -87,32 +81,18 @@ def get_v_mask(images, n, edge_erosion, threshold=1/4, kernel_size=105):
     v_mask[:, -edge_erosion:] = 0
     return v_mask
 
-def draw_features(imgs, float_results, working):
-    features_dir = working / "features"
-    if not features_dir.exists():
-        os.mkdir(str(features_dir))
-    for idx, (img, results) in enumerate(zip(tqdm(imgs, "Drawing Target Results"), float_results)):
-        fig, ax = plt.subplots(1, figsize=np.array(imgs[0].shape[:2][::-1]) / np.max(imgs[0].shape[::-1]) * 4)
-        I = features.draw_circles(
-            img.copy(),
-            results['acc_mask'],
-            results['circles']
-        )
-        ax.imshow(I / 255)
-        ax.axis('off')
-        fig.tight_layout()
-        fig.savefig(str(features_dir / f"features_{idx}.jpg"), dpi=300)
-        plt.close()
-
-def visualize_mapping_error(targets, target_coords, shape, v_mask, M, destination, id=None):
+def visualize_mapping_error(targets, target_coords, shape, v_mask, M, destination, id=None, calibration=None):
     errors = np.sum(np.linalg.norm(target_coords[:, np.newaxis] - target_coords, axis=-1), axis=-1)
     target_id = np.argmin(errors)
     target = targets[target_id]
 
     R = 0
     C = 0
+
+    if calibration is None:
+        calibration = Calibration(None)
     for t in tqdm(targets, "Rewarping Images to Target"):
-        res, mask = warping.rewarp_image(str(t), str(target), shape, v_mask, M)
+        res, mask = warping.rewarp_image(str(t), str(target), shape, v_mask, M, calibration=calibration)
         R += res.astype(np.float32)
         C += mask
     
@@ -163,9 +143,15 @@ def main(
     save_masks: bool = False,
     draw_matches: bool = True,
     target_area: float = 3,
-    prune_features: bool = True,
-    transform_mode: TransformMode = TransformMode.Rectified
+    transform_mode: TransformMode = TransformMode.Linear,
+    feature_min: float | None = 150,
+    feature_max: float | None = 500,
+    calibration: str | None = "./calibration.npy"
 ):
+    if calibration is None:
+        logger.warning("Running with no camera calibration!")
+    calib = Calibration(calibration)
+
     log("Initializing: setting up directories")
     if not Path(working_directory).exists():
         os.mkdir(working_directory)
@@ -173,6 +159,7 @@ def main(
 
     project_path = Path(working / "project.npy")
     project = Project(project_path)
+    min_correspondances = 3
     
     if project["images"] is None:
         images = get_good_images(data)
@@ -181,23 +168,51 @@ def main(
         log(f"Working with {len(images)} images.")
 
         targets, mask, coords = get_target_area(images, target, target_area)
-        imgs = summarize_data(coords, working, targets, mask)
+        summarize_data(coords, working, targets, mask, calib)
 
         project.initialize_dataset(images, targets, coords)
     else:
-        imgs = None
         images = project["images"]; targets = project["targets"]; coords = project["coords"]
 
     if project["features"] is None:
-        if imgs is None:
-            imgs = [np.asarray(Image.open(t)) for t in tqdm(project["targets"], "Loading Images")]
-        float_results = [features.find_floats(im, logs=save_masks) for im in tqdm(imgs, "Finding Features")]
-        circles = [i['circles'][0] if not i['circles'] is None else np.array([]).reshape((-1, 3)) for i in float_results]
-        coordinate_frames = [registration.get_image_transform(gps.get_gimbal_yaw(t), imgs[0].shape) for t in targets]
-        draw_features(imgs, float_results, working)
-        project.save_features((float_results, circles, coordinate_frames))
+        removing = []
+        circles = []
+
+        features_dir = working / "features"
+        if not features_dir.exists():
+            os.mkdir(str(features_dir))
+
+        for idx, target in enumerate(tqdm(targets, "Finding Features")):
+            float_results = features.find_floats(calib.open(target), logs=save_masks)
+            c = float_results.get('circles')
+            if c is None or len(c[0]) < min_correspondances:
+                removing.append(idx)
+                continue
+            else:
+                circles.append(c[0])
+                cv2.imwrite(
+                    str(
+                        features_dir / f"features_{idx}.jpg",
+                    ),
+                    cv2.pyrDown(cv2.pyrDown(cv2.pyrDown(float_results['result'].astype(np.uint8)[..., ::-1])))
+                )
+
+        mask = np.invert(np.isin(np.arange(len(targets)), np.array(removing)))
+        targets = np.array(targets)[mask]
+
+        log(f"Removed {len(removing)} images due to insufficient floats")
+
+        sample = calib.open(targets[0])
+
+        coordinate_frames = [
+            registration.get_image_transform(gps.get_gimbal_yaw(t), sample.shape) for t in targets
+        ]
+        project['targets'] = targets
+
+        # draw_features(imgs, float_results, working)
+        project.save_features((circles, coordinate_frames))
     else:
-        float_results, circles, coordinate_frames = project["features"]
+        circles, coordinate_frames = project["features"]
 
 
     match_dir = None
@@ -208,7 +223,7 @@ def main(
 
     # Match Floats
     if project["matches"] is None:
-        safe_transforms, transforms = registration.get_good_transforms(targets, circles, min_correspondances=3, desc_size=100, match_dir=match_dir)
+        safe_transforms, transforms = registration.get_good_transforms(targets, circles, calib, min_correspondances=min_correspondances, desc_size=100, match_dir=match_dir)
         project.save_matches((safe_transforms, transforms))
     else:
         safe_transforms, transforms = project["matches"]
@@ -219,28 +234,18 @@ def main(
     
     v_mask = project["v_mask"]
     if project["v_mask"] is None:
-        v_mask = get_v_mask(images, 200, 30)
+        v_mask = get_v_mask(images, 200, 30, calibration=calib)
         project.save_vignette_mask(v_mask)
     shape = v_mask.shape
 
     if project["transform"] is None:
-        M, offsets, translations = registration.map_coords_to_image(targets, safe_transforms, gps.to_arc_seconds(target_coords))
+        M, offsets, translations = registration.map_coords_to_image(targets, safe_transforms, gps.to_arc_seconds(target_coords), mode=transform_mode)
         project.save_triangulation(M, offsets, translations)
-        visualize_mapping_error(targets, target_coords, shape, v_mask, M, working)
-        # best = redo_transform(project)
-        # M = best
-        # project['transform'] = best
-        # project.write()
-        # visualize_mapping_error(targets, target_coords, shape, v_mask, M, working, id="_REMAP")
+        visualize_mapping_error(targets, target_coords, shape, v_mask, M, working, calibration=calib)
     else:
         M = project["transform"]
         offsets = project["offsets"]
         transforms = project["translations"]
-
-    if prune_features:
-        r = project['features']
-        r = (None, r[1], r[2])
-        project['features'] = r
 
     project.write()
 

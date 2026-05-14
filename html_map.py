@@ -18,8 +18,10 @@ from project import Project
 import rasterio
 from rasterio.transform import Affine
 
-def save_geotiff(target, v_mask, M, destination, downsample=4):
-    tiff = (np.asarray(Image.open(target)) * v_mask[..., np.newaxis]).astype(np.uint8)
+from calib import Calibration
+
+def save_geotiff(target, v_mask, M, destination, step, downsample=4, calibration=None):
+    tiff = (calibration.open(target) * v_mask[..., np.newaxis]).astype(np.uint8)
     for _ in range(downsample):
         tiff = cv2.pyrDown(tiff)
     height, width = tiff.shape[:2]
@@ -74,6 +76,24 @@ def save_geotiff(target, v_mask, M, destination, downsample=4):
         img = img.transpose(2, 0, 1)  # channels last → first
         return img
     
+    img = tiff
+    Y, X = np.meshgrid(np.arange(img.shape[1]), np.arange(img.shape[0]))
+    ctr = np.array(img.shape[:2])[::-1] / 2
+    UV = (np.dstack([Y, X]) - ctr) / ctr
+    alpha2 = np.exp(-np.vecdot(UV, UV) * 6 / step)
+    
+    # alpha2 = D / D.max()# < 0.33
+    # alpha2 = 1 - alpha2
+    # alpha2 *= alpha2
+    # alpha2 *= alpha2
+
+    # import matplotlib.pyplot as plt
+    # plt.imshow(alpha2); plt.colorbar(); plt.show(); 
+    
+    MAX_ALPHA = 255
+    # alpha = np.clip((alpha * alpha2 * MAX_ALPHA), 0, 255).astype(np.uint8)
+    alpha = np.clip(alpha2 * MAX_ALPHA, 0, 255).astype(np.uint8)
+    
     # ---- WRITE GEOTIFF ----
     DEST = str(destination / f"output_{Path(target).stem}.tif")
     with rasterio.open(
@@ -82,12 +102,18 @@ def save_geotiff(target, v_mask, M, destination, downsample=4):
         driver="GTiff",
         height=height,
         width=width,
-        count=3,  # number of bands
+        count=4,  # number of bands
         dtype=tiff.dtype,
         crs="EPSG:4326",  # change if needed
         transform=transform,
     ) as dst:
-        dst.write(prep_raster_for_rasterio(tiff[::-1, ::-1]))
+        d = np.vstack([
+                prep_raster_for_rasterio(tiff[::-1, ::-1]),
+                alpha[np.newaxis, ...]
+            ])
+        dst.write(
+            d
+        )
     return DEST
     
     
@@ -98,22 +124,19 @@ import folium
 from folium.raster_layers import ImageOverlay
 
 import webbrowser
-def create_map(geotiffs, destination):
+def create_map(geotiffs, destination, skip):
     images = []
     bounds = []
     for r in geotiffs:
-        print("Loading", r)
         with rasterio.open(r) as src:
             img = reshape_as_image(src.read())  # converts (bands, H, W) -> (H, W, bands)
             images.append(img)
             bounds.append(src.bounds)
-            print(src.bounds)
 
     images = []
     bounds = []
 
     for r in geotiffs:
-        print("Processing", r)
         with rasterio.open(r) as src:
             # print("SKEWED RASTER")
             # Check if the raster is skewed
@@ -152,7 +175,7 @@ def create_map(geotiffs, destination):
                 Y, X = np.meshgrid(np.arange(img.shape[1]), np.arange(img.shape[0]))
                 ctr = np.array(img.shape[:2])[::-1] / 2
                 UV = (np.dstack([Y, X]) - ctr) / ctr
-                alpha2 = np.exp(-np.vecdot(UV, UV) * 6)
+                alpha2 = np.exp(-np.vecdot(UV, UV) * 6 / skip)
                 
                 alpha = np.where(np.all(reprojected_raster == 0, axis=0), 0, 1)
                 # alpha2 = D / D.max()# < 0.33
@@ -210,29 +233,59 @@ def create_map(geotiffs, destination):
 
     webbrowser.open('file://' + str(dest.resolve()))
 
+def execute_thread(images, v_mask, M, map_path, step, downsample, calibration, thread_id):
+    for image in tqdm(images, f"Thread {thread_id}"):
+        save_geotiff(image, v_mask, M, map_path, step, downsample, calibration)
+
+
+from threading import Thread
+from shutil import rmtree
 def main(
-        working: str,
-        downsample: int = 4,
-        step: int = 1
+    working: str,
+    downsample: int = 4,
+    step: int = 1,
+    calibration: str | None = "./calibration.npy",
+    project_name: str | None = None,
+    mask: bool = True,
+    threads: int = 6
 ):
-    project = Path(working) / "project.npy"
+    if project_name is None:
+        project = Path(working) / "project.npy"
+    else:
+        project = Path(project_name)
+
     if not project.exists():
         raise "Unable to load project file because it does not exist: " + str(project)
     proj = Project(str(project))
     images = sorted(proj['images'])[::step]
     target = proj['target']
     v_mask = proj['v_mask']
+    if not mask:
+        v_mask = np.ones(v_mask.shape)
     M = proj['transform']
-    geotiffs = []
 
     map_path = Path(working) / "map_sources"
     if not map_path.exists():
         os.mkdir(str(map_path))
 
-    for image in tqdm(images, "Saving Images"):
-        geotiffs.append(save_geotiff(image, v_mask, M, map_path, downsample))
+    calib = Calibration(calibration)
 
-    create_map(geotiffs, Path(working))
+    n_per_thread = int(np.ceil(len(images) / threads))
+    threads = []
+    for ID, i in enumerate(range(0, len(images), n_per_thread)):
+        t = Thread(
+            target=execute_thread,
+            args=(images[i: min(i + n_per_thread, len(images))], v_mask, M, map_path, step, downsample, calib, ID + 1)
+        )
+        t.start()
+        threads.append(t)
+    for t in threads:
+        t.join()
+
+    geotiffs = glob.glob(str(map_path / "*.tif"))
+
+    create_map(geotiffs, Path(working), skip=step)
+    rmtree(str(map_path))
     
 
     

@@ -96,7 +96,7 @@ def line_mask(mask, dist_thresh=10, rho=1, theta=np.pi / 180, threshold=10, minL
             line_mask = np.bitwise_and(line_mask, M)
     return line_mask
 
-def find_circles(mask, dp=2, minDist=20, param1=5, param2=20, minRadius=5, maxRadius=30):
+def find_circles(mask, dp=2, minDist=500, param1=5, param2=20, minRadius=5, maxRadius=30):
     circles = cv2.HoughCircles(
         mask.astype(np.uint8),
         cv2.HOUGH_GRADIENT,
@@ -122,8 +122,8 @@ def draw_circles(img, mask, circles):
             cv2.circle(img, (x, y), 2, (0, 0, 255), 3)
     return img
 
-        
-def find_floats(img, gray=0.15, erosion=3, dilation=5, g_mask=0.05, draw_results=True, logs=True):
+from scipy import ndimage     
+def find_floats_direct(img, gray=0.15, erosion=3, dilation=5, g_mask=0.05, draw_results=True, logs=True):
     if logs:
         log("Finding Gray Mask")
     mask, gray = gray_mask(img, threshold=gray)
@@ -135,6 +135,173 @@ def find_floats(img, gray=0.15, erosion=3, dilation=5, g_mask=0.05, draw_results
         log("Finding Edge Mask")
     e_mask = edge_mask(img, canny1=500, cann2=0)
     acc_mask = np.bitwise_and(acc_mask, e_mask)
+
+    if g_mask:
+        if logs:
+            log("Taking Gradient Mask")
+        g_mask = gradient_mask(img, threshold=g_mask)
+        acc_mask = np.bitwise_and(acc_mask, g_mask)
+
+    res = {}
+
+    if logs:
+        log("Finding Line Mask")
+    l_mask = line_mask(acc_mask, logs=logs)
+    acc_mask = np.bitwise_and(acc_mask, l_mask)
+    acc_mask = cv2.erode(
+        acc_mask,
+        np.ones((erosion, erosion))
+    )
+    acc_mask = cv2.dilate(
+        acc_mask,
+        np.ones((dilation, dilation))
+    )
+
+    if logs:
+        log("Finding Circles")
+    circles = find_circles(acc_mask)
+    res.update({
+        'circles': circles,
+        'acc_mask': acc_mask,
+    })
+    if logs:
+        res.update(
+            {
+                'mask': mask,
+                'g_mask': g_mask,
+                'b_mask': b_mask,
+                'e_mask': e_mask,
+                'l_mask': l_mask,
+            }
+        )
+    if draw_results:
+        res.update({'result': draw_circles(img, acc_mask, circles)})
+    return res
+
+def find_floats_direct(img, gray=0.15, erosion=3, dilation=5, g_mask=0.05, draw_results=True, logs=True):
+    if logs:
+        log("Finding Gray Mask")
+    mask, gray = gray_mask(img, threshold=gray)
+    if logs:
+        log("Finding Boat Mask")
+    b_mask = area_mask(mask)
+    acc_mask = np.bitwise_and(mask, b_mask)
+    if logs:
+        log("Finding Edge Mask")
+    e_mask = edge_mask(img, canny1=500, cann2=0)
+    acc_mask = np.bitwise_and(acc_mask, e_mask)
+
+    if g_mask:
+        if logs:
+            log("Taking Gradient Mask")
+        g_mask = gradient_mask(img, threshold=g_mask)
+        acc_mask = np.bitwise_and(acc_mask, g_mask)
+
+    res = {}
+
+    if logs:
+        log("Finding Line Mask")
+    l_mask = line_mask(acc_mask, logs=logs)
+    acc_mask = np.bitwise_and(acc_mask, l_mask)
+    acc_mask = cv2.erode(
+        acc_mask,
+        np.ones((erosion, erosion))
+    )
+    acc_mask = cv2.dilate(
+        acc_mask,
+        np.ones((dilation, dilation))
+    )
+
+    if logs:
+        log("Finding Circles")
+    circles = find_circles(acc_mask)
+    res.update({
+        'circles': circles,
+        'acc_mask': acc_mask,
+    })
+    if logs:
+        res.update(
+            {
+                'mask': mask,
+                'g_mask': g_mask,
+                'b_mask': b_mask,
+                'e_mask': e_mask,
+                'l_mask': l_mask,
+            }
+        )
+    if draw_results:
+        res.update({'result': draw_circles(img, acc_mask, circles)})
+    return res
+
+def estimate_ellipses(labeled_mask, num_features, feature_mask):
+    # Find edges
+    edges = cv2.Canny(feature_mask.astype(np.uint8), 3, 3, 3, 3)
+    
+    # Inflate signals for edges
+    IDS = ndimage.maximum_filter(labeled_mask, size=5)
+
+    M = np.zeros((num_features, 2), dtype=np.float32)
+    ESQ = np.zeros((num_features, 2), dtype=np.float32)
+    EXY = np.zeros(num_features, dtype=np.float32)
+    N = np.zeros(num_features, dtype=np.float32)
+    coords = np.dstack((np.meshgrid(np.arange(feature_mask.shape[1]), np.arange(feature_mask.shape[0])))[::-1])
+
+    edge_mask = edges > 0 
+    # edge_mask[edge_mask] *= IDS[edge_mask] > 0
+    edge_id = IDS[edge_mask]
+
+    C = coords[edge_mask]
+    np.add.at(M, edge_id, C)
+    np.add.at(ESQ, edge_id, C * C)
+    np.add.at(EXY, edge_id, np.prod(C, axis=-1))
+    np.add.at(N, edge_id, 1)
+    N = np.maximum(N, 1)
+    
+    M /= N[..., np.newaxis]
+    ESQ /= N[..., np.newaxis]
+    EXY /= N
+    MSQ = ESQ - M * M
+
+    cross = EXY - np.prod(M, axis=-1)
+    diff = MSQ[:, 0] - MSQ[:, 1]
+    det = np.sqrt(diff * diff + 4 * cross * cross)
+
+    s = np.sum(MSQ, axis=-1)
+    A = np.sqrt(s + det)
+
+    # B = np.sqrt(s - det)
+    eccentricity = np.where(s > det, np.sqrt(s - det) / A, 0)
+    
+    orientation = -0.5 * np.atan2(
+        2 * cross,
+        MSQ[:, 0] - MSQ[:, 1]
+    ) + np.pi / 2
+    
+    return eccentricity, orientation
+
+def find_floats(img, gray=220, erosion=3, dilation=5, g_mask=0.05, size_constraints=(150, 600), eccentricity_threshold=0.075, draw_results=True, logs=True):
+    if logs:
+        log("Finding Gray Mask")
+    mask = (np.mean(img, axis=-1) > gray).astype(np.float32)
+
+    labeled_mask, num_features = ndimage.label(mask)
+
+    areas = ndimage.sum(mask, labeled_mask, index=range(1, num_features + 1))
+    labeled_mask -= 1
+
+    THRESH = size_constraints[0]
+    THRESH2 = size_constraints[1]
+    IDS = np.where(labeled_mask >= 0, areas[labeled_mask], 0)
+    feature_mask = (np.bitwise_and(IDS > THRESH, IDS < THRESH2))
+    eccentricity, orientation = estimate_ellipses(labeled_mask, num_features, feature_mask.astype(np.uint8))
+    feature_mask = (np.square(np.where(labeled_mask > 0, eccentricity[labeled_mask], 0) - 1) < eccentricity_threshold) * feature_mask
+    res = {}
+
+    if logs:
+        res.update({"feature_mask": feature_mask})
+        log("Finding Edge Mask")
+    e_mask = edge_mask(img, canny1=500, cann2=0)
+    acc_mask = np.bitwise_and(feature_mask, e_mask)
 
     if g_mask:
         if logs:
@@ -155,20 +322,18 @@ def find_floats(img, gray=0.15, erosion=3, dilation=5, g_mask=0.05, draw_results
         np.ones((dilation, dilation))
     )
 
-    # acc_mask = np.bitwise_and(acc_mask, g_mask)
     if logs:
         log("Finding Circles")
     circles = find_circles(acc_mask)
-    res = {
+    res.update({
         'circles': circles,
         'acc_mask': acc_mask,
-    }
+    })
     if logs:
         res.update(
             {
                 'mask': mask,
                 'g_mask': g_mask,
-                'b_mask': b_mask,
                 'e_mask': e_mask,
                 'l_mask': l_mask,
             }
