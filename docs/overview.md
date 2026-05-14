@@ -22,39 +22,33 @@ These methods often fail on scenes without dinstiguishable details, such as the 
 
 ## Products
 
-We present to methods of map generation depending on the amount of how much processing should be done during or before viewing.
+We present two methods of map generation depending on the amount of how much processing should be done during or before viewing.
 
 ### Folium Map
 The simplest and quickest result is a map made with folium. It populates a map with a subset of downsampled images stacked on top of each other. While this is quick to generate, the tiles overlap and your browser may switch between these tiles.
-<!-- <div style="display: grid; place-items: center;">
-    <img 
-        src="./figures/Rosenstiel HTML Map May 6.png"
-        alt="drawing"
-        width="500"
-    />
-</div> -->
 
-<!-- [*Open Interactive Folium Map*](https://npikielny.github.io/SeaScan/figures/march_20_folium.html) -->
 <iframe
-  src="https://npikielny.github.io/SeaScan/figures/march_20_folium.html"
+  src="https://npikielny.github.io/SeaScan/march_20_folium.html"
   frameborder="0"
   width=100%
   height=500px
   allowfullscreen>
 </iframe>
 
+This particular result uses fewer images, at a lower resolution, to work with github.
+
 ### Stitched Image
 Using our derived GPS transformation we can stitch together high-quality images with limited noise from glint and parallax. This work is ongoing and the transforms of the corresponding geotiffs need correction.
 
 <div style="display: flex; justify-content: space-around">
  <img 
-   src="./figures/stitch_1.tif"
-   alt="drawing"
+   src="/figures/stitch_1.png"
+   alt="geotif stitching map 1–imagine a very windy drone path"
    width="300"
  />
  <img 
-   src="./figures/stitch_2.tif"
-   alt="drawing"
+   src="./figures/stitch_2.png"
+   alt="geotif stitching map 2-a map over some ocean and some land"
    width="300"
  />
 </div>
@@ -95,3 +89,7 @@ In designing for the Mavic 3E, we also included parameters for its image undisto
    width="300"
  />
 </div>
+
+
+
+> # [You can find our code here!](https://github.com/Npikielny/SeaScan)

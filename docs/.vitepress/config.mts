@@ -27,6 +27,7 @@ export default defineConfig({
     ]
   },
   vite: {
-    assetsInclude: ["**/*.tif", "**/*.tiff"]
-  }
+    assetsInclude: ["**/*.tif", "**/*.tiff", "**/*.png", "**/*.jpg"]
+  },
+  base: "/SeaScan/"
 })
