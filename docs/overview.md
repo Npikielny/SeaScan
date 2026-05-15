@@ -1,7 +1,7 @@
 # SeaScan
 
 Constructing maps of flat regions should be a relatively simple task, but conventional approaches require complicated structure-from-motion pipelines intended for full 3D reconstruction.
-These methods often fail on scenes without dinstiguishable details, such as the ocean. We overcome this limitation through the use of target(s) and GPS data to stitch maps that are focused at a singular depth.
+These methods often fail on scenes without distinguishable details, such as the ocean. We overcome this limitation through the use of target(s) and GPS data to stitch maps that are focused at a singular depth.
 
 ### Map of Waters Near the Rosenstiel School using the MAVIC 3E
 <div style="display: flex; justify-content: space-around">
@@ -22,10 +22,10 @@ These methods often fail on scenes without dinstiguishable details, such as the 
 
 ## Products
 
-We present two methods of map generation depending on the amount of how much processing should be done during or before viewing.
+We present two methods of map generation depending on the amount of how much processing that should be done during or before viewing.
 
 ### Folium Map
-The simplest and quickest result is a map made with folium. It populates a map with a subset of downsampled images stacked on top of each other. While this is quick to generate, the tiles overlap and your browser may switch between these tiles.
+The simplest and quickest result is a map made with folium. It populates a map with a subset of downsampled images stacked on top of each other. While this is quick to generate, the tiles overlap, and your browser may switch between these tiles.
 
 <iframe
   src="https://npikielny.github.io/SeaScan/march_20_folium.html"
@@ -35,10 +35,10 @@ The simplest and quickest result is a map made with folium. It populates a map w
   allowfullscreen>
 </iframe>
 
-This particular result uses fewer images, at a lower resolution, to work with github.
+This particular result uses fewer images, at a lower resolution, to work with Github.
 
 ### Stitched Image
-Using our derived GPS transformation we can stitch together high-quality images with limited noise from glint and parallax. This work is ongoing and the transforms of the corresponding geotiffs need correction.
+Using our derived GPS transformation, we can stitch together high-quality images with limited noise from glint and parallax. This work is ongoing and the transforms of the corresponding geotiffs need correction.
 
 <div style="display: flex; justify-content: space-around">
  <img 
@@ -55,7 +55,7 @@ Using our derived GPS transformation we can stitch together high-quality images 
 
 
 ### Timelapse Videos
-Lastly, we can collate data around a particular region to get an idea of 3D shape, as well as, an idea of the accuracy of our GPS to image mapping. Notice in May 1, the image transform is slightly off, so objects on the sea surface appear to move.
+Lastly, we can collate data around a particular region to get an idea of the 3D shape, as well as an idea of the accuracy of our GPS to image mapping. Notice in May 1, the image transform is slightly off, so objects on the sea surface appear to move.
 
 <div style="display: flex; justify-content: space-around">
 <video controls src="./figures/rectified_timelapse_small.mp4" width=300></video>
@@ -70,12 +70,12 @@ Thus, our method can be used on any type of target with minimal effort.
 
 2. GPS Data
 
-Our method uses GPS data, as well as gimbal heading data to align images. We designed with the Mavic 3E in mind, so the meta data should be found at `GimbalYawDegree` and `GimbalPitchDegree`.
-However, if these do no suit your data, you can edit the `gps.py` file.
+Our method uses GPS data, as well as gimbal heading data, to align images. We designed with the Mavic 3E in mind, so the metadata should be found at `GimbalYawDegree` and `GimbalPitchDegree`.
+However, if these do not suit your data, you can edit the `gps.py` file.
 
 3. Camera Calibration (optional)
 
-In designing for the Mavic 3E, we also included parameters for its image undistortion. We included a notebook that leverage's [OpenCV checkerboard camera calibration](https://docs.opencv.org/3.4/dc/dbb/tutorial_py_calibration.html). This can be found in `Calibration.ipynb`.
+In designing for the Mavic 3E, we also included parameters for its image undistortion. We included a notebook that leverages [OpenCV checkerboard camera calibration](https://docs.opencv.org/3.4/dc/dbb/tutorial_py_calibration.html). This can be found in `Calibration.ipynb`.
 
 <div style="display: flex; justify-content: space-around">
  <img 

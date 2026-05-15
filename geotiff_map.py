@@ -314,7 +314,6 @@ def create_map(
         downsample: int = 4,
         block_width: int = 1024,
         block_height: int = 1024,
-        pixels_per_degree: float = 1,
         kernel_strength: float = np.pi ** 3,
         threads: int = 4,
         calibration: str | None = None
