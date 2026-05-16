@@ -22,7 +22,7 @@ These methods often fail on scenes without distinguishable details, such as the 
 
 ## Products
 
-We present two methods of map generation depending on the amount of how much processing that should be done during or before viewing.
+We present two methods of map generation depending on the amount of processing that should be done during or before viewing.
 
 ### Folium Map
 The simplest and quickest result is a map made with folium. It populates a map with a subset of downsampled images stacked on top of each other. While this is quick to generate, the tiles overlap, and your browser may switch between these tiles.
@@ -38,7 +38,7 @@ The simplest and quickest result is a map made with folium. It populates a map w
 This particular result uses fewer images, at a lower resolution, to work with Github.
 
 ### Stitched Image
-Using our derived GPS transformation, we can stitch together high-quality images with limited noise from glint and parallax. This work is ongoing and the transforms of the corresponding geotiffs need correction.
+Using our derived GPS transformation, we can stitch together high-quality images with limited noise from glint. This work is ongoing and the transforms of the corresponding geotiffs need correction.
 
 <div style="display: flex; justify-content: space-around">
  <img 
@@ -55,7 +55,7 @@ Using our derived GPS transformation, we can stitch together high-quality images
 
 
 ### Timelapse Videos
-Lastly, we can collate data around a particular region to get an idea of the 3D shape, as well as an idea of the accuracy of our GPS to image mapping. Notice in May 1, the image transform is slightly off, so objects on the sea surface appear to move.
+Lastly, we can collate data around a particular region to get an idea of the 3D shape, change over time, as well as a depiction of the accuracy of our GPS to image mapping. Notice in May 1, the image transform is slightly off, so objects on the sea surface appear to move.
 
 <div style="display: flex; justify-content: space-around">
 <video controls src="./figures/rectified_timelapse_small.mp4" width=300></video>
@@ -65,8 +65,28 @@ Lastly, we can collate data around a particular region to get an idea of the 3D 
 ### Requirements
 1. Sea Surface Target
 
-Our method was designed to automatically detect mooring buoys for boats; however, manually isolating a target in just a few images yields similar results. 
+Our method was designed to automatically detect mooring buoys for boats; however, you can also manually isolate a target, and in just a few images, the algorithm can achieve similar results. 
 Thus, our method can be used on any type of target with minimal effort. 
+
+<div style="display: flex; justify-content: space-around">
+<div>
+<h3>Automatic Feature Detection</h3>
+ <img 
+   src="./figures/may_6_features.jpg"
+   alt="drawing"
+   width="300"
+ />
+ </div>
+ 
+ <div>
+ <h3>Manual Feature Annotation</h3>
+ <img 
+   src="./figures/demo_manual.png"
+   alt="drawing"
+   width="400"
+ />
+ </div>
+</div>
 
 2. GPS Data
 
@@ -77,18 +97,6 @@ However, if these do not suit your data, you can edit the `gps.py` file.
 
 In designing for the Mavic 3E, we also included parameters for its image undistortion. We included a notebook that leverages [OpenCV checkerboard camera calibration](https://docs.opencv.org/3.4/dc/dbb/tutorial_py_calibration.html). This can be found in `Calibration.ipynb`.
 
-<div style="display: flex; justify-content: space-around">
- <img 
-   src="./figures/may_6_features.jpg"
-   alt="drawing"
-   width="300"
- />
- <img 
-   src="./figures/demo_manual.png"
-   alt="drawing"
-   width="300"
- />
-</div>
 
 
 
